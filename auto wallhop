@@ -1,0 +1,101 @@
+This 
+-- ============================================================
+-- AUTO WALL HOP — HoneyLua Plugin
+--   100% Original Logic. Only ON/OFF toggle added.
+--
+-- CREDITS:
+--   Original Author  : akuza0545
+--   Converter        : ZenBT05
+-- ============================================================
+return function(HoneyLua)
+    local Players = game:GetService("Players")
+    local UserInputService = game:GetService("UserInputService")
+
+    local player = Players.LocalPlayer
+    local character = player.Character or player.CharacterAdded:Wait()
+    local humanoid = character:WaitForChild("Humanoid")
+    local rootPart = character:WaitForChild("HumanoidRootPart")
+
+    player.CharacterAdded:Connect(function(newChar)
+        character = newChar
+        humanoid = newChar:WaitForChild("Humanoid")
+        rootPart = newChar:WaitForChild("HumanoidRootPart")
+    end)
+
+    -- Exact Replica Physics Tuners (The working configuration)
+    local HOP_HEIGHT = 50        -- Standard Roblox jump power velocity
+    local PUSH_BACK = 12         -- Keeps you perfectly close to wall seam lines
+    local DETECT_RANGE = 2.4     -- Standard range for R6 and R15 characters
+    local COOLDOWN_TIME = 0.25   -- Matches the frame-timing windows of true wall hops
+
+    local canWallHop = true
+-- ============================================================
+    -- Toggle state
+    -- ============================================================
+    local function isEnabled()
+        return HoneyLua.config.get("awh_enabled", true)
+    end
+
+    UserInputService.JumpRequest:Connect(function()
+        if not isEnabled() then return end
+        if not canWallHop then return end
+
+        -- Verify character is in mid-air state
+        local state = humanoid:GetState()
+        if state == Enum.HumanoidStateType.Freefall or state == Enum.HumanoidStateType.Jumping then
+
+            local params = RaycastParams.new()
+            params.FilterType = Enum.RaycastFilterType.Exclude
+            params.FilterDescendantsInstances = {character}
+
+            -- Cast straight forward relative to character direction
+            local lookDirection = rootPart.CFrame.LookVector * DETECT_RANGE
+            local rayResult = workspace:Raycast(rootPart.Position, lookDirection, params)
+
+            if rayResult then
+                canWallHop = false
+
+                -- Isolate current horizontal velocity so we don't snap/teleport position
+                local currentX = rootPart.AssemblyLinearVelocity.X
+                local currentZ = rootPart.AssemblyLinearVelocity.Z
+-- Force clean native jump state transition
+                humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+
+                -- Replicate a wall hop by adding the push normal to the existing horizontal vectors
+                local newX = currentX + (rayResult.Normal.X * PUSH_BACK)
+                local newZ = currentZ + (rayResult.Normal.Z * PUSH_BACK)
+
+                -- Overwrite velocity as a single cohesive unit to avoid server-side rubber banding
+                rootPart.AssemblyLinearVelocity = Vector3.new(newX, HOP_HEIGHT, newZ)
+
+                task.wait(COOLDOWN_TIME)
+                canWallHop = true
+            end
+        end
+    end)
+
+    -- ============================================================
+    -- HoneyLua UI — Only ON/OFF toggle + Credits
+    -- ============================================================
+    local tab = HoneyLua.ui.createTab("Auto Wall Hop", { id = "awh_tab", icon = "jump" })
+
+    tab.createToggle("Enabled", isEnabled(), function(s)
+        HoneyLua.config.set("awh_enabled", s)
+        HoneyLua.config.save()
+        if HoneyLua.notify then
+            HoneyLua.notify("Auto Wall Hop: " .. (s and "ON" or "OFF"))
+        end
+    end)
+
+    tab.createButton("Show Credits", function()
+        local msg = "Auto Wall Hop | Original: akuza0545 | Converter: ZenBT05"
+        if HoneyLua.notify then HoneyLua.notify(msg) end
+        print(msg)
+    end)
+
+    HoneyLua.defer(function()
+        if HoneyLua.notify then
+            HoneyLua.notify("Auto Wall Hop loaded | Credit: akuza0545 & ZenBT05")
+        end
+    end)
+end
